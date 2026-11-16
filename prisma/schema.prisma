@@ -1,0 +1,194 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum CircleFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
+enum PayoutMethod {
+  RANDOM
+  FIXED
+  BIDDING
+}
+
+enum CircleStatus {
+  FORMING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum CircleMemberRole {
+  ADMIN
+  MEMBER
+}
+
+enum InviteStatus {
+  INVITED
+  ACCEPTED
+  REMOVED
+}
+
+enum CycleStatus {
+  PENDING
+  COLLECTING
+  HOLD_ESCROW
+  PAID
+  OVERDUE
+}
+
+enum ContributionStatus {
+  PAID
+  LATE
+  MISSED
+  WAIVED
+}
+
+enum WalletTxType {
+  TOPUP
+  WITHDRAW
+  CONTRIB
+  PAYOUT
+  FEE
+  RESERVE
+}
+
+enum WalletTxStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  passwordHash  String
+  name          String
+  phone         String?
+  avatarUrl     String?
+  verifiedMock  Boolean        @default(false)
+  trustScore    Int            @default(50)
+  createdAt     DateTime       @default(now())
+  wallet        Wallet?
+  memberships   CircleMember[]
+  contributions Contribution[]
+  notifications Notification[]
+  activityLogs  ActivityLog[]
+}
+
+model Wallet {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  balanceNGN Int       @default(0)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  txs       WalletTx[]
+}
+
+model WalletTx {
+  id        String         @id @default(cuid())
+  walletId  String
+  type      WalletTxType
+  amountNGN Int
+  status    WalletTxStatus @default(COMPLETED)
+  metaJson  String?
+  createdAt DateTime       @default(now())
+  wallet    Wallet         @relation(fields: [walletId], references: [id], onDelete: Cascade)
+}
+
+model Circle {
+  id            String          @id @default(cuid())
+  name          String
+  amountNGN     Int
+  frequency     CircleFrequency
+  membersCount  Int
+  startDate     DateTime
+  payoutMethod  PayoutMethod
+  lateFeePct    Int             @default(0)
+  graceDays     Int             @default(0)
+  status        CircleStatus    @default(FORMING)
+  escrowHold    Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  members       CircleMember[]
+  invites       Invite[]
+  cycles        Cycle[]
+  activityLogs  ActivityLog[]
+}
+
+model CircleMember {
+  id            String           @id @default(cuid())
+  circleId      String
+  userId        String
+  role          CircleMemberRole @default(MEMBER)
+  acceptedRules Boolean          @default(false)
+  joinStatus    InviteStatus     @default(INVITED)
+  payoutOrder   Int?
+  trustSnapshot Int              @default(50)
+  joinedAt      DateTime?
+  circle        Circle           @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([circleId, userId])
+}
+
+model Invite {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  circleId  String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  circle    Circle   @relation(fields: [circleId], references: [id], onDelete: Cascade)
+}
+
+model Cycle {
+  id               String     @id @default(cuid())
+  circleId         String
+  index            Int
+  dueDate          DateTime
+  recipientMemberId String?
+  status           CycleStatus @default(PENDING)
+  releasedAt       DateTime?
+  circle           Circle     @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  contributions    Contribution[]
+}
+
+model Contribution {
+  id             String             @id @default(cuid())
+  cycleId        String
+  userId         String
+  amountNGN      Int
+  paidAt         DateTime?
+  status         ContributionStatus @default(PAID)
+  lateFeeApplied Int                @default(0)
+  cycle          Cycle              @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([cycleId, userId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  type      String
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  circleId  String
+  actorUserId String?
+  action    String
+  detailsJson String
+  createdAt DateTime @default(now())
+  circle    Circle   @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  actor     User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+}
